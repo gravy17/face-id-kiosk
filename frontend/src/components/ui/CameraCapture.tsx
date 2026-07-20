@@ -7,14 +7,16 @@ import { Button } from './index'
 
 interface CameraCaptureProps {
   onCapture: (dataUrl: string, timestamp: number) => void
-  captured:  boolean
-  preview?:  string | null
+  onRetake: () => void
+  captured: boolean
+  preview?: string | null
   scanning?: boolean
   className?: string
 }
 
 export function CameraCapture({
   onCapture,
+  onRetake,
   captured,
   preview,
   scanning = false,
@@ -22,10 +24,20 @@ export function CameraCapture({
 }: CameraCaptureProps) {
   const webcamRef = useRef<Webcam>(null)
 
+  // Capture and retake are distinct actions, not a toggle of the same
+  // handler: once captured=true, <Webcam> unmounts (replaced by the <img>
+  // preview) so webcamRef.current is null and getScreenshot() would
+  // silently return undefined. Retake must reset state directly, never
+  // go through getScreenshot().
   const handleCapture = useCallback(() => {
     const dataUrl = webcamRef.current?.getScreenshot()
     if (dataUrl) onCapture(dataUrl, Math.floor(Date.now() / 1000))
   }, [onCapture])
+
+  const handleButtonClick = useCallback(() => {
+    if (captured) onRetake()
+    else handleCapture()
+  }, [captured, onRetake, handleCapture])
 
   return (
     <div className={clsx('flex flex-col gap-3', className)}>
@@ -49,11 +61,11 @@ export function CameraCapture({
         {/* Face guide oval */}
         <div
           className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[50%_50%_45%_45%] border-2 border-[hsl(var(--accent)/0.5)]"
-          style={{ width: 130, height: 160 }}
+          style={{ height: '70%', aspectRatio: '130 / 160' }}
         />
 
         {/* Corner brackets */}
-        {(['tl','tr','bl','br'] as const).map(corner => (
+        {(['tl', 'tr', 'bl', 'br'] as const).map(corner => (
           <CornerBracket key={corner} corner={corner} />
         ))}
 
@@ -84,7 +96,7 @@ export function CameraCapture({
 
       {/* Capture / Retake button */}
       <Button
-        onClick={handleCapture}
+        onClick={handleButtonClick}
         variant={captured ? 'ghost' : 'primary'}
       >
         <Camera size={14} />

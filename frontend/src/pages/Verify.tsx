@@ -25,6 +25,14 @@ export function Verify() {
     verify.reset()
   }
 
+  function handleRetake() {
+    setPreview(null)
+    setImageBlob(null)
+    setCaptureTs(0)
+    setCaptured(false)
+    verify.reset()
+  }
+
   async function handleVerify() {
     if (!imageBlob || !challenge.data) return
 
@@ -63,6 +71,7 @@ export function Verify() {
         {/* Camera */}
         <CameraCapture
           onCapture={handleCapture}
+          onRetake={handleRetake}
           captured={captured}
           preview={preview}
           scanning

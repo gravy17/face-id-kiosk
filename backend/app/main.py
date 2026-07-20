@@ -8,9 +8,8 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from app.api import factsheet, register, verify
 from app.core.config import get_settings
@@ -21,10 +20,6 @@ from app.middleware.request_logger import RequestLoggerMiddleware
 settings = get_settings()
 configure_logging(debug=settings.DEBUG)
 logger   = get_logger(__name__)
-
-# ── Rate limiter ──────────────────────────────────────────────────────────
-limiter = Limiter(key_func=get_remote_address)
-
 
 # ── Lifespan ──────────────────────────────────────────────────────────────
 
@@ -81,9 +76,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── State ─────────────────────────────────────────────────────────────
-    app.state.limiter = limiter
-
     # ── Middleware (order matters — outermost first) ───────────────────────
     app.add_middleware(
         CORSMiddleware,
@@ -107,13 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(register.router)
     app.include_router(verify.router)
     app.include_router(factsheet.router)
-
-    # Apply per-route rate limiting via decorators in each router,
-    # or via slowapi dependencies added here:
-    limiter.limit(settings.RATE_LIMIT_REGISTER)(
-        app.routes[next(i for i, r in enumerate(app.routes) if getattr(r, "path", "") == "/register")]
-    )
-
+    
     return app
 
 

@@ -18,14 +18,11 @@ opencv-python-headless==4.9.0.80
 numpy==1.26.4
 Pillow==10.3.0
 
-# Face ML
-deepface==0.0.93
-# RetinaFace is bundled with deepface; explicit pin for stability
-retina-face==0.0.17
-
-# MiniFASNet (liveness) — install from source or use the community port
-# pip install git+https://github.com/minivision-ai/Silent-Face-Anti-Spoofing
-# Listed here as a comment — add the wheel path or git URL to your install step
+# Face ML — detection (SCRFD), recognition (ArcFace/w600k_mbf) and
+# liveness (MiniFASNetV2) all run directly through onnxruntime now.
+# No more deepface / retina-face / Silent-Face-Anti-Spoofing packages —
+# see app/services/{retinaface,deepface,liveness}_service.py and app/ml/.
+onnxruntime==1.27.0
 
 # Rate limiting
 slowapi==0.1.9

@@ -14,7 +14,7 @@ POST /register — full registration pipeline:
 """
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, UploadFile, status
 from fastapi import File as FastAPIFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,10 +31,13 @@ from app.services.report_service import registration_details, rejection_details
 from app.services.retinaface_service import get_face_detector
 from app.utils.image_validation import validate_image
 from app.utils.timing import timed
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+settings = get_settings()
 logger = get_logger(__name__)
 router = APIRouter(prefix="/register", tags=["Registration"])
-
+limiter = Limiter(key_func=get_remote_address)
 
 @router.post(
     "",
@@ -42,7 +45,9 @@ router = APIRouter(prefix="/register", tags=["Registration"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user with facial capture",
 )
+@limiter.limit(settings.RATE_LIMIT_REGISTER)
 async def register(
+    request:           Request,
     # ── Image ──────────────────────────────────────────────────────────────
     image:             UploadFile = FastAPIFile(..., description="Webcam capture (JPEG/PNG/WebP)"),
 

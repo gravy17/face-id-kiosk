@@ -13,7 +13,7 @@ POST /verify — full verification pipeline:
 """
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, UploadFile, status
 from fastapi import File as FastAPIFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,17 +35,22 @@ from app.services.report_service import verification_details
 from app.services.retinaface_service import get_face_detector
 from app.utils.image_validation import validate_image
 from app.utils.timing import timed
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+settings = get_settings()
 logger = get_logger(__name__)
 router = APIRouter(prefix="/verify", tags=["Verification"])
-
+limiter = Limiter(key_func=get_remote_address)
 
 @router.post(
     "",
     response_model=VerificationResponse,
     summary="Verify identity and receive a short-lived fact sheet token",
 )
+@limiter.limit(settings.RATE_LIMIT_REGISTER)
 async def verify(
+    request:           Request,
     image:             UploadFile = FastAPIFile(...),
     nonce:             str = Form(...),
     capture_timestamp: int = Form(...),
