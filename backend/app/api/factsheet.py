@@ -34,10 +34,14 @@ router = APIRouter(tags=["Fact Sheet & Admin"])
 @router.post(
     "/challenge",
     response_model=ChallengeResponse,
-    summary="Request a signed challenge nonce for webcam enforcement",
+    summary="Request a challenge nonce for webcam-capture freshness enforcement",
 )
-async def get_challenge(settings: Settings = Depends(get_settings)) -> ChallengeResponse:
-    challenge = issue_challenge(settings)
+async def get_challenge(
+    db:       AsyncSession = Depends(get_db),
+    settings: Settings     = Depends(get_settings),
+) -> ChallengeResponse:
+    repo: FacialKioskRepository = get_repository(db)
+    challenge = await issue_challenge(settings, repo)
     return ChallengeResponse(**challenge)
 
 

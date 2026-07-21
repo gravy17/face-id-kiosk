@@ -28,8 +28,6 @@ from app.ml.onnx_session import load_session
 
 logger = get_logger(__name__)
 
-_REAL_CLASS_INDEX = 1  # matches the Silent-Face-Anti-Spoofing label convention
-
 
 # ── Data class ────────────────────────────────────────────────────────────
 
@@ -93,6 +91,9 @@ class MiniFASNetONNXDetector(LivenessDetector):
         input_size: int,
         crop_scale: float,
         threshold: float,
+        real_class_index: int = 1,
+        channel_order: str = "bgr",
+        normalize_255: bool = False,
     ) -> None:
         self._session = load_session(model_path, providers)
         self._input_name = self._session.get_inputs()[0].name
@@ -100,7 +101,26 @@ class MiniFASNetONNXDetector(LivenessDetector):
         self._input_size = input_size
         self._crop_scale = crop_scale
         self._threshold = threshold
+        self._real_class_index = real_class_index
+        self._channel_order = channel_order.lower()
+        self._normalize_255 = normalize_255
         self._model_name = "MiniFASNetV2"
+
+        # Sanity-check the configured input size against what the model
+        # actually declares, so a mismatch shows up as a clear warning at
+        # startup instead of a silent accuracy hit (or a cryptic shape
+        # error if the model has a fixed, non-dynamic input).
+        declared_shape = self._session.get_inputs()[0].shape
+        if len(declared_shape) == 4:
+            model_h, model_w = declared_shape[2], declared_shape[3]
+            if isinstance(model_h, int) and isinstance(model_w, int):
+                if model_h != input_size or model_w != input_size:
+                    logger.warning(
+                        "LIVENESS_INPUT_SIZE does not match the model's declared "
+                        "input shape — update the setting to match.",
+                        configured=input_size,
+                        model_declares=f"{model_h}x{model_w}",
+                    )
 
     @property
     def model_name(self) -> str:
@@ -122,20 +142,29 @@ class MiniFASNetONNXDetector(LivenessDetector):
                 image, bbox, scale=self._crop_scale, out_size=self._input_size,
             )
 
-            # Silent-Face-Anti-Spoofing preprocessing: BGR, [0, 1] scale,
-            # CHW, no channel swap and no per-channel normalisation.
-            blob = crop.astype(np.float32) / 255.0
-            blob = np.transpose(blob, (2, 0, 1))[None, ...]
+            # Preprocessing confirmed against yakhyo/face-anti-spoofing's own
+            # onnx_inference.py: raw float32 pixel values (NOT scaled to
+            # [0,1] by default — see LIVENESS_NORMALIZE_255), CHW, channel
+            # order configurable via LIVENESS_CHANNEL_ORDER.
+            img = crop
+            if self._channel_order == "rgb":
+                img = img[:, :, ::-1]
+
+            blob = img.astype(np.float32)
+            if self._normalize_255:
+                blob = blob / 255.0
+            blob = np.ascontiguousarray(np.transpose(blob, (2, 0, 1))[None, ...])
 
             logits = self._session.run([self._output_name], {self._input_name: blob})[0]
             probs = _softmax(logits.reshape(-1))
 
-            real_score = float(probs[_REAL_CLASS_INDEX])
+            real_score = float(probs[self._real_class_index])
             passed = real_score >= self._threshold
 
             logger.debug(
                 "Liveness check complete",
                 score=round(real_score, 4),
+                all_class_probs=[round(p, 4) for p in probs.tolist()],
                 threshold=self._threshold,
                 passed=passed,
             )
@@ -201,6 +230,9 @@ def get_liveness_detector() -> LivenessDetector:
                 input_size=settings.LIVENESS_INPUT_SIZE,
                 crop_scale=settings.LIVENESS_CROP_SCALE,
                 threshold=settings.LIVENESS_THRESHOLD,
+                real_class_index=settings.LIVENESS_REAL_CLASS_INDEX,
+                channel_order=settings.LIVENESS_CHANNEL_ORDER,
+                normalize_255=settings.LIVENESS_NORMALIZE_255,
             )
             logger.info("LivenessDetector initialised", model="MiniFASNetV2")
         else:

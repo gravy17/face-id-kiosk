@@ -26,7 +26,6 @@ export interface RegisterPayload {
   image:            Blob
   nonce:            string
   capture_timestamp:number
-  signature:        string
   first_name:       string
   last_name:        string
   nickname?:        string
@@ -42,7 +41,6 @@ export async function registerUser(
   form.append('image',             payload.image, 'capture.jpg')
   form.append('nonce',             payload.nonce)
   form.append('capture_timestamp', String(payload.capture_timestamp))
-  form.append('signature',         payload.signature)
   form.append('first_name',        payload.first_name)
   form.append('last_name',         payload.last_name)
   if (payload.nickname)       form.append('nickname',       payload.nickname)
@@ -62,7 +60,6 @@ export interface VerifyPayload {
   image:             Blob
   nonce:             string
   capture_timestamp: number
-  signature:         string
 }
 
 export async function verifyUser(
@@ -72,7 +69,6 @@ export async function verifyUser(
   form.append('image',             payload.image, 'capture.jpg')
   form.append('nonce',             payload.nonce)
   form.append('capture_timestamp', String(payload.capture_timestamp))
-  form.append('signature',         payload.signature)
 
   const { data } = await http.post<VerificationResponse>('/verify', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -107,40 +103,6 @@ export async function fetchLogs(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * Signs a challenge on the client side.
- * In a real deployment this would use the Web Crypto API with
- * a shared secret injected at build time or via a secure env var.
- * For this implementation we use a deterministic string the backend
- * can verify: SHA-256 HMAC is approximated via a concatenated string
- * since the Web Crypto HMAC key must match the backend JWT_SECRET.
- *
- * Production note: inject VITE_CHALLENGE_SECRET as an env var and use:
- *   crypto.subtle.importKey / crypto.subtle.sign
- */
-export async function signChallenge(
-  nonce:             string,
-  captureTimestamp:  number,
-): Promise<string> {
-  const secret  = import.meta.env.VITE_CHALLENGE_SECRET ?? 'change-me-in-production'
-  const message = `${nonce}:${captureTimestamp}`
-
-  const enc     = new TextEncoder()
-  const keyData = enc.encode(secret)
-  const msgData = enc.encode(message)
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-
-  const sig     = await crypto.subtle.sign('HMAC', cryptoKey, msgData)
-  const hexArr  = Array.from(new Uint8Array(sig))
-  return hexArr.map(b => b.toString(16).padStart(2, '0')).join('')
-}
 
 /**
  * Convert a base64 data URL (from react-webcam) to a Blob.

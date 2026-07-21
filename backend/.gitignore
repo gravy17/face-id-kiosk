@@ -2,3 +2,4 @@
 .venv/
 **/storage/faces/
 **/__pycache__/
+*.db

@@ -89,3 +89,18 @@ class VerificationLog(Base):
     created_at:     Mapped[datetime]   = mapped_column(default=_now)
 
     user: Mapped["User|None"] = relationship("User", back_populates="verification_logs")
+
+
+class Challenge(Base):
+    """
+    Server-issued, single-use nonce backing the webcam-capture 'freshness'
+    check on /register and /verify. Replaces the old client-side HMAC
+    signature scheme (which required shipping a secret to the browser —
+    see app/core/security.py for why that was unsound).
+    """
+    __tablename__ = "challenges"
+
+    nonce:      Mapped[str]      = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
+    used:       Mapped[bool]     = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=_now)

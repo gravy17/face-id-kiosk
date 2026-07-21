@@ -42,7 +42,7 @@ export function CameraCapture({
   return (
     <div className={clsx('flex flex-col gap-3', className)}>
       {/* Camera frame */}
-      <div className="relative overflow-hidden rounded-card border border-[hsl(var(--border))] bg-[hsl(var(--surface-1))]" style={{ aspectRatio: '4/3' }}>
+      <div className="h-[65vh] relative overflow-hidden rounded-card border border-[hsl(var(--border))] bg-[hsl(var(--surface-1))]" style={{ aspectRatio: '1/1' }}>
 
         {/* Live feed or preview */}
         {captured && preview ? (
@@ -52,9 +52,18 @@ export function CameraCapture({
             ref={webcamRef}
             screenshotFormat="image/jpeg"
             screenshotQuality={0.92}
-            videoConstraints={{ facingMode: 'user', width: 1280, height: 960 }}
+            videoConstraints={{ 
+              facingMode: 'user', 
+              width:  { ideal: 1280, min: 640 },
+              height: { ideal: 960,  min: 480 }, 
+            }}
             className="h-full w-full object-cover"
             mirrored
+            onUserMedia={(stream) => {
+              const settings = stream.getVideoTracks()[0]?.getSettings()
+              console.log('[camera] negotiated settings:', settings)
+            }}
+            onUserMediaError={(err) => console.error('[camera] getUserMedia error:', err)}
           />
         )}
 

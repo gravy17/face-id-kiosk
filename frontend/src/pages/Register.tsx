@@ -1,5 +1,5 @@
 // src/pages/Register.tsx
-import { dataUrlToBlob, signChallenge } from '@/api/client'
+import { dataUrlToBlob } from '@/api/client'
 import { CameraCapture } from '@/components/ui/CameraCapture'
 import { Button, Card, Input, StatusBar } from '@/components/ui'
 import { useChallenge, useRegister } from '@/hooks'
@@ -59,13 +59,11 @@ export function Register() {
     if (!imageBlob || !challenge.data) return
 
     const { nonce } = challenge.data
-    const sig        = await signChallenge(nonce, captureTs)
 
     register.mutate({
       image: imageBlob,
       nonce,
       capture_timestamp: captureTs,
-      signature: sig,
       ...form,
     })
   }

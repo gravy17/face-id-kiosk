@@ -157,9 +157,15 @@ class ArcFaceONNXEmbedder(FaceEmbedder):
         probe_arr /= np.linalg.norm(probe_arr) + 1e-10
         ref_arr   /= np.linalg.norm(ref_arr)   + 1e-10
 
+        logger.info(
+            "probe=%s ref=%s",
+            probe_arr.shape,
+            ref_arr.shape,
+        )
+
         distance  = float(1.0 - np.dot(probe_arr, ref_arr))
         verified  = distance <= threshold
-
+        
         # Confidence: 100 = perfect match (distance=0),
         #             0   = at threshold, negative beyond
         confidence = max(0.0, round((1.0 - distance / threshold) * 100, 2))

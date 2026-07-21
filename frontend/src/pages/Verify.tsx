@@ -1,5 +1,5 @@
 // src/pages/Verify.tsx
-import { dataUrlToBlob, signChallenge } from '@/api/client'
+import { dataUrlToBlob } from '@/api/client'
 import { CameraCapture } from '@/components/ui/CameraCapture'
 import { Badge, Button, Card, DataRow, StatusBar } from '@/components/ui'
 import { useChallenge, useVerify } from '@/hooks'
@@ -37,10 +37,9 @@ export function Verify() {
     if (!imageBlob || !challenge.data) return
 
     const { nonce } = challenge.data
-    const sig        = await signChallenge(nonce, captureTs)
 
     verify.mutate(
-      { image: imageBlob, nonce, capture_timestamp: captureTs, signature: sig },
+      { image: imageBlob, nonce, capture_timestamp: captureTs },
       {
         onSuccess(data) {
           // Auto-navigate to fact sheet if verified + token present
@@ -67,7 +66,7 @@ export function Verify() {
         </p>
       </div>
 
-      <div className="flex w-full max-w-sm flex-col gap-4">
+      <div className="flex w-full flex-col gap-4">
         {/* Camera */}
         <CameraCapture
           onCapture={handleCapture}
