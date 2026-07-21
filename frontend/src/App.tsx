@@ -12,11 +12,11 @@ export function App() {
       <Sidebar />
       <main className="flex-1 overflow-hidden">
         <Routes>
-          <Route path="/"          element={<Navigate to="/register" replace />} />
-          <Route path="/register"  element={<Register  />} />
-          <Route path="/verify"    element={<Verify    />} />
+          <Route path="/" element={<Navigate to="/register" replace />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/verify" element={<Verify />} />
           <Route path="/factsheet" element={<FactSheet />} />
-          <Route path="/logs"      element={<Logs      />} />
+          <Route path="/logs" element={<Logs />} />
         </Routes>
       </main>
     </div>
