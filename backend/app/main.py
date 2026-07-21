@@ -14,6 +14,7 @@ from slowapi.util import get_remote_address
 
 from app.api import factsheet, register, verify
 from app.core.config import get_settings
+from app.core.limiter import limiter
 from app.core.logger import configure_logging, get_logger
 from app.database.db import close_db, init_db
 from app.middleware.request_logger import RequestLoggerMiddleware
@@ -21,9 +22,6 @@ from app.middleware.request_logger import RequestLoggerMiddleware
 settings = get_settings()
 configure_logging(debug=settings.DEBUG)
 logger   = get_logger(__name__)
-
-# ── Rate limiter ──────────────────────────────────────────────────────────
-limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────
@@ -98,21 +96,14 @@ def create_app() -> FastAPI:
     # ── Exception handlers ────────────────────────────────────────────────
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # ── Rate limits on specific routes ───────────────────────────────────
-    @app.middleware("http")
-    async def apply_rate_limits(request: Request, call_next):
-        return await call_next(request)
-
     # ── Routers ───────────────────────────────────────────────────────────
+    # Per-route rate limits are applied via @limiter.limit(...) decorators
+    # directly on the /register and /verify endpoint functions (see those
+    # modules) — slowapi requires decorating the actual endpoint callable,
+    # not patching the route object after the fact.
     app.include_router(register.router)
     app.include_router(verify.router)
     app.include_router(factsheet.router)
-
-    # Apply per-route rate limiting via decorators in each router,
-    # or via slowapi dependencies added here:
-    limiter.limit(settings.RATE_LIMIT_REGISTER)(
-        app.routes[next(i for i, r in enumerate(app.routes) if getattr(r, "path", "") == "/register")]
-    )
 
     return app
 

@@ -1,12 +1,12 @@
 """
 app/api/register.py
 POST /register — full registration pipeline:
-  1. Validate challenge signature (webcam enforcement)
+  1. Consume challenge nonce (webcam-capture freshness / replay prevention)
   2. Validate image (MIME, size, resolution, blur)
-  3. Detect face with RetinaFace (exactly one face required)
+  3. Detect face with SCRFD (exactly one face required)
   4. Check liveness with MiniFASNet
   5. Check for duplicate face against existing embeddings
-  6. Generate embedding with DeepFace
+  6. Generate embedding with ArcFace
   7. Save image to disk
   8. Persist user + face record
   9. Write audit log
@@ -14,13 +14,14 @@ POST /register — full registration pipeline:
 """
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile, status
 from fastapi import File as FastAPIFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.limiter import limiter
 from app.core.logger import get_logger, request_id_var
-from app.core.security import verify_challenge_signature
+from app.core.security import consume_challenge
 from app.database.db import get_db
 from app.database.repository import FacialKioskRepository, get_repository
 from app.schemas.responses import RegistrationResponse
@@ -42,14 +43,16 @@ router = APIRouter(prefix="/register", tags=["Registration"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user with facial capture",
 )
+@limiter.limit(get_settings().RATE_LIMIT_REGISTER)
 async def register(
+    request: Request,  # required by slowapi's @limiter.limit, even though unused directly
+
     # ── Image ──────────────────────────────────────────────────────────────
     image:             UploadFile = FastAPIFile(..., description="Webcam capture (JPEG/PNG/WebP)"),
 
     # ── Webcam challenge fields ────────────────────────────────────────────
     nonce:             str = Form(...),
-    capture_timestamp: int = Form(...),
-    signature:         str = Form(...),
+    capture_timestamp: int | None = Form(None, description="Client-side capture time, for audit logging only"),
 
     # ── User details ──────────────────────────────────────────────────────
     first_name:     str        = Form(...),
@@ -69,8 +72,13 @@ async def register(
 
     with timed() as t:
 
-        # ── 1. Verify webcam challenge ─────────────────────────────────────
-        verify_challenge_signature(nonce, capture_timestamp, signature, settings)
+        # ── 1. Consume challenge nonce ─────────────────────────────────────
+        # Committed immediately (not just flushed) so this is burned even
+        # if something later in the pipeline fails and the request's
+        # transaction rolls back — otherwise a failed attempt would
+        # silently "un-consume" the nonce, letting it be reused.
+        await consume_challenge(nonce, repo)
+        await db.commit()
 
         # ── 2. Validate image ─────────────────────────────────────────────
         validated = await validate_image(image, settings)

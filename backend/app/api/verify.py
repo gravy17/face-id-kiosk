@@ -1,11 +1,11 @@
 """
 app/api/verify.py
 POST /verify — full verification pipeline:
-  1. Validate challenge signature
+  1. Consume challenge nonce (webcam-capture freshness / replay prevention)
   2. Validate image
-  3. Detect face (RetinaFace)
+  3. Detect face (SCRFD)
   4. Liveness check (MiniFASNet)
-  5. Generate probe embedding (DeepFace)
+  5. Generate probe embedding (ArcFace)
   6. Search all stored embeddings for closest match
   7. Issue JWT if verified
   8. Write audit and verification logs
@@ -13,13 +13,14 @@ POST /verify — full verification pipeline:
 """
 import uuid
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile, status
 from fastapi import File as FastAPIFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.core.limiter import limiter
 from app.core.logger import get_logger, request_id_var
-from app.core.security import issue_fact_sheet_token, verify_challenge_signature
+from app.core.security import consume_challenge, issue_fact_sheet_token
 from app.database.db import get_db
 from app.database.repository import FacialKioskRepository, get_repository
 from app.schemas.responses import (
@@ -45,11 +46,12 @@ router = APIRouter(prefix="/verify", tags=["Verification"])
     response_model=VerificationResponse,
     summary="Verify identity and receive a short-lived fact sheet token",
 )
+@limiter.limit(get_settings().RATE_LIMIT_VERIFY)
 async def verify(
+    request:           Request,  # required by slowapi's @limiter.limit, even though unused directly
     image:             UploadFile = FastAPIFile(...),
     nonce:             str = Form(...),
-    capture_timestamp: int = Form(...),
-    signature:         str = Form(...),
+    capture_timestamp: int | None = Form(None, description="Client-side capture time, for audit logging only"),
 
     db:       AsyncSession = Depends(get_db),
     settings: Settings     = Depends(get_settings),
@@ -60,8 +62,11 @@ async def verify(
 
     with timed() as t:
 
-        # ── 1. Challenge verification ──────────────────────────────────────
-        verify_challenge_signature(nonce, capture_timestamp, signature, settings)
+        # ── 1. Consume challenge nonce ──────────────────────────────────────
+        # Committed immediately — see register.py for why this can't wait
+        # for the rest of the request's transaction to commit.
+        await consume_challenge(nonce, repo)
+        await db.commit()
 
         # ── 2. Image validation ────────────────────────────────────────────
         validated = await validate_image(image, settings)
@@ -114,15 +119,7 @@ async def verify(
             matched_user, distance = match_result
             match_user_id = matched_user.id
 
-            ver_result = embedder.compute_distance(
-                probe.embedding,
-                [],   # distance already computed in find_closest_match
-                settings.VERIFICATION_THRESHOLD,
-            )
-            # Override with the actual stored distance
-            from dataclasses import replace
-            ver_result = replace(ver_result, distance=round(distance, 4))
-
+            
             # ── 7. Issue JWT ───────────────────────────────────────────────
             token = issue_fact_sheet_token(matched_user.id, settings)
 

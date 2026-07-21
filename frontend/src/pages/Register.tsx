@@ -1,5 +1,5 @@
 // src/pages/Register.tsx
-import { dataUrlToBlob, signChallenge } from '@/api/client'
+import { dataUrlToBlob } from '@/api/client'
 import { CameraCapture } from '@/components/ui/CameraCapture'
 import { Button, Card, Input, StatusBar } from '@/components/ui'
 import { useChallenge, useRegister } from '@/hooks'
@@ -46,18 +46,24 @@ export function Register() {
     register.reset()
   }
 
+  function handleRetake() {
+    setPreview(null)
+    setImageBlob(null)
+    setCaptureTs(0)
+    setCaptured(false)
+    register.reset()
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!imageBlob || !challenge.data) return
 
     const { nonce } = challenge.data
-    const sig        = await signChallenge(nonce, captureTs)
 
     register.mutate({
       image: imageBlob,
       nonce,
       capture_timestamp: captureTs,
-      signature: sig,
       ...form,
     })
   }
@@ -90,6 +96,7 @@ export function Register() {
         {/* ── Camera (top) ─────────────────────────────────────── */}
         <CameraCapture
           onCapture={handleCapture}
+          onRetake={handleRetake}
           captured={captured}
           preview={preview}
         />

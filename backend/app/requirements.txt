@@ -22,7 +22,7 @@ Pillow==10.3.0
 # liveness (MiniFASNetV2) all run directly through onnxruntime now.
 # No more deepface / retina-face / Silent-Face-Anti-Spoofing packages —
 # see app/services/{retinaface,deepface,liveness}_service.py and app/ml/.
-onnxruntime==1.27.0
+onnxruntime==1.15.1
 
 # Rate limiting
 slowapi==0.1.9

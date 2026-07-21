@@ -14,11 +14,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import numpy as np
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
-from app.database.models import AuditLog, FaceRecord, User, VerificationLog
+from app.database.models import AuditLog, Challenge, FaceRecord, User, VerificationLog
 
 logger = get_logger(__name__)
 
@@ -134,6 +134,23 @@ class FacialKioskRepository(ABC):
         """Delete users (and cascaded records) older than N days. Returns count."""
         ...
 
+    # ── Challenges (webcam-capture freshness / replay prevention) ──────────
+
+    @abstractmethod
+    async def create_challenge(self, nonce: str, expires_at: datetime) -> Challenge:
+        """Persist a newly issued challenge nonce."""
+        ...
+
+    @abstractmethod
+    async def consume_challenge(self, nonce: str) -> bool:
+        """
+        Atomically validate and consume a challenge nonce: must exist, be
+        unexpired, and unused. Marks it used on success so it can never be
+        redeemed twice. Returns True if the nonce was valid and just
+        consumed, False otherwise.
+        """
+        ...
+
 
 # ── SQLite Implementation ─────────────────────────────────────────────────
 
@@ -235,12 +252,15 @@ class SQLiteRepository(FacialKioskRepository):
                 best_record   = record
 
         if best_record is None or best_distance > threshold:
+            logger.info("No match")
             return None
 
         user = await self.get_user_by_id(best_record.user_id)
         if user is None:
+            logger.info("No match")
             return None
 
+        logger.info("Match")
         return (user, best_distance)
 
     # ── Audit ─────────────────────────────────────────────────────────────
@@ -318,6 +338,37 @@ class SQLiteRepository(FacialKioskRepository):
         if count:
             logger.info("Cleanup: deleted old records", count=count, cutoff_days=days)
         return count
+
+    # ── Challenges ────────────────────────────────────────────────────────
+
+    async def create_challenge(self, nonce: str, expires_at: datetime) -> Challenge:
+        challenge = Challenge(nonce=nonce, expires_at=expires_at)
+        self._session.add(challenge)
+        await self._session.flush()
+        return challenge
+
+    async def consume_challenge(self, nonce: str) -> bool:
+        """
+        Single UPDATE ... WHERE used=false AND expires_at > now, checked via
+        rowcount — this is the atomic operation: two concurrent requests
+        racing on the same nonce can't both succeed, because the DB only
+        lets one UPDATE actually match the WHERE clause before 'used'
+        flips to true.
+        """
+        now = datetime.now(timezone.utc)
+        result = await self._session.execute(
+            update(Challenge)
+            .where(
+                Challenge.nonce == nonce,
+                Challenge.used == False,          # noqa: E712
+                Challenge.expires_at > now,
+            )
+            .values(used=True)
+        )
+        consumed = result.rowcount == 1
+        if not consumed:
+            logger.warning("Challenge rejected", nonce=nonce)
+        return consumed
 
 
 # ── Dependency factory ────────────────────────────────────────────────────

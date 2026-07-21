@@ -3,19 +3,22 @@ app/core/security.py
 Handles:
   - Short-lived JWT issuance and verification (fact sheet access)
   - Admin API key verification
-  - Signed challenge nonce (webcam-only enforcement)
+  - Server-tracked challenge nonce (webcam-capture freshness / replay prevention)
 """
-import hashlib
 import hmac
 import time
 import uuid
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, Header, HTTPException, status
 from jose import JWTError, jwt
 
 from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
+
+if TYPE_CHECKING:
+    from app.database.repository import FacialKioskRepository
 
 logger = get_logger(__name__)
 
@@ -87,51 +90,50 @@ def verify_admin_key(
         )
 
 
-# ── Signed Challenge (webcam enforcement) ─────────────────────────────────
+# ── Signed Challenge → Server-Tracked Challenge (webcam enforcement) ───────
+#
+# Previously this issued a nonce and expected the frontend to return an
+# HMAC-SHA256 signature over it, computed with a "shared secret" baked
+# into the frontend build. That secret is not actually secret — any
+# VITE_/REACT_APP_-style env var ends up inlined in the shipped JS bundle,
+# readable by anyone via devtools. So the signature never proved anything
+# beyond "this request was built by code that can read our own bundle" —
+# which is not a meaningful barrier.
+#
+# This now tracks challenges server-side instead: /challenge issues a
+# nonce and persists it with an expiry; /register and /verify redeem it
+# via a single atomic "consume" operation (see
+# SQLiteRepository.consume_challenge) that fails if the nonce is missing,
+# expired, or already used. No secret ever reaches the browser, and reuse
+# (replay) of a captured request is blocked because a nonce can only be
+# consumed once.
 
-def issue_challenge(settings: Settings) -> dict[str, Any]:
+async def issue_challenge(
+    settings: Settings,
+    repo: "FacialKioskRepository",
+) -> dict[str, Any]:
     """
-    Issues a one-time challenge nonce for the frontend to sign.
-    The frontend captures a frame, appends the nonce + capture timestamp,
-    and sends the HMAC-SHA256 signature alongside the image.
-
+    Issues a one-time challenge nonce and persists it server-side.
     Returns: { "nonce": str, "expires_at": int (unix timestamp) }
     """
     nonce      = uuid.uuid4().hex
-    expires_at = int(time.time()) + settings.CHALLENGE_TTL_SECONDS
-    return {"nonce": nonce, "expires_at": expires_at}
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.CHALLENGE_TTL_SECONDS)
+    await repo.create_challenge(nonce, expires_at)
+    return {"nonce": nonce, "expires_at": int(expires_at.timestamp())}
 
 
-def verify_challenge_signature(
+async def consume_challenge(
     nonce: str,
-    capture_timestamp: int,
-    signature: str,
-    settings: Settings,
+    repo: "FacialKioskRepository",
 ) -> None:
     """
-    Verifies the HMAC-SHA256 signature the frontend sends with each image.
-
-    The frontend computes:
-        HMAC-SHA256(secret=CHALLENGE_SECRET, message=f"{nonce}:{capture_timestamp}")
-
-    Raises HTTP 400 if the signature is invalid or the nonce has expired.
+    Validates and consumes a challenge nonce. Raises HTTP 400 if the nonce
+    is unknown, expired, or has already been used (replay).
     """
-    now = int(time.time())
-
-    if now - capture_timestamp > settings.CHALLENGE_TTL_SECONDS:
+    ok = await repo.consume_challenge(nonce)
+    if not ok:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Challenge has expired. Request a fresh challenge and capture again.",
-        )
-
-    expected = hmac.new(
-        key=settings.JWT_SECRET.encode(),
-        msg=f"{nonce}:{capture_timestamp}".encode(),
-        digestmod=hashlib.sha256,
-    ).hexdigest()
-
-    if not hmac.compare_digest(expected, signature):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid challenge signature. Image must be captured directly from webcam.",
+            detail="Invalid, expired, or already-used challenge. "
+                   "Request a fresh challenge and capture again.",
         )

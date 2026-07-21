@@ -1,12 +1,12 @@
 // src/components/layout/Sidebar.tsx
 import { clsx } from 'clsx'
-import { ClipboardList, Fingerprint, IdCard, UserPlus } from 'lucide-react'
+import { ClipboardList, Fingerprint, IdCardLanyard, UserPlus } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 const links = [
   { to: '/register',  label: 'Register',   Icon: UserPlus      },
   { to: '/verify',    label: 'Verify',      Icon: Fingerprint   },
-  { to: '/factsheet', label: 'Fact sheet',  Icon: IdCard        },
+  { to: '/factsheet', label: 'Fact sheet',  Icon: IdCardLanyard        },
   { to: '/logs',      label: 'Audit logs',  Icon: ClipboardList },
 ]
 
