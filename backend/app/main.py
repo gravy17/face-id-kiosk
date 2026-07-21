@@ -6,11 +6,10 @@ Registers middleware, routers, rate limiting, CORS, and lifecycle hooks.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from app.api import factsheet, register, verify
 from app.core.config import get_settings
@@ -101,9 +100,9 @@ def create_app() -> FastAPI:
     # directly on the /register and /verify endpoint functions (see those
     # modules) — slowapi requires decorating the actual endpoint callable,
     # not patching the route object after the fact.
-    app.include_router(register.router)
-    app.include_router(verify.router)
-    app.include_router(factsheet.router)
+    app.include_router(register.router, prefix="/api")
+    app.include_router(verify.router, prefix="/api")
+    app.include_router(factsheet.router, prefix="/api")
 
     return app
 
