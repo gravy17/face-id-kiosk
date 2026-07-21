@@ -7,9 +7,10 @@ import type {
   RegistrationResponse,
   VerificationResponse,
 } from '@/types'
+const apiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 const http = axios.create({
-  baseURL: '/api',
+  baseURL: `${apiUrl}/api`,
   timeout: 30_000,
 })
 
