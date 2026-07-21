@@ -1,5 +1,5 @@
 // src/pages/Logs.tsx
-import { Badge, Card, DataRow, Spinner, StatusBar } from '@/components/ui'
+import { Badge, Card, Spinner, StatusBar } from '@/components/ui'
 import { useLogs } from '@/hooks'
 import type { AuditLogEntry } from '@/types'
 import { CircleAlert, RefreshCw, Shield } from 'lucide-react'

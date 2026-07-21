@@ -17,7 +17,7 @@ export function FactSheet() {
 
   // Token passed from Verify page via router state or sessionStorage
   const token  = (location.state as any)?.token  ?? sessionStorage.getItem('fs_token')
-  const userId = (location.state as any)?.userId ?? sessionStorage.getItem('fs_user_id')
+  // const userId = (location.state as any)?.userId ?? sessionStorage.getItem('fs_user_id')
 
   useEffect(() => {
     if (!token) return
